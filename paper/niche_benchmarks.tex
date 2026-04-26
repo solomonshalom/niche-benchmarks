@@ -1,0 +1,641 @@
+% In Defense of Niche Benchmarks: Why the Long Tail of LLM Evaluation Matters
+% arXiv preprint — April 2026
+
+\documentclass[11pt,a4paper]{article}
+
+% ── Packages ──────────────────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{natbib}
+\usepackage{url}
+\usepackage{microtype}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  citecolor=blue!60!black,
+  urlcolor=blue!60!black,
+}
+
+% ── Title ─────────────────────────────────────────────────────────────────────
+\title{%
+  \textbf{In Defense of Niche Benchmarks:\\
+  Why the Long Tail of LLM Evaluation Matters}%
+}
+
+\author{
+  Solomon Shalom Lijo \\
+  R\={o}my \\
+  \texttt{solomon@getromy.app}
+}
+
+\date{April 26, 2026}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{document}
+\maketitle
+
+% ── Abstract ──────────────────────────────────────────────────────────────────
+\begin{abstract}
+General-purpose large language model (LLM) benchmarks such as MMLU, HumanEval, and GPQA Diamond have entered a regime in which the leading models cluster within two to four percentage points of one another, and in which substantial evidence of training-data contamination undermines the interpretability of the remaining gaps. In response, the evaluation ecosystem has produced a rapidly growing tail of \emph{niche benchmarks}: domain-vertical evaluations such as MedQA, LegalBench, FinBen, BridgeBench, and PIF-Bench; and indie/informal evaluations such as SkateBench and SnitchBench. The dominant framing in the recent literature treats this proliferation as fragmentation to be cleaned up. We argue the opposite: niche benchmarks are a structurally necessary correction to the saturation, contamination, and Goodhart-style overfitting of general-capability leaderboards, and they generate value in two directions at once. For practitioners, they make model selection a tractable, evidence-based decision tied to a specific deployment context. For frontier laboratories, they provide a discriminating signal precisely where general benchmarks no longer separate models, and they surface failure modes (geographic recall gaps, temporal displacement of facts, edge-case adaptation, sensitive-topic handling) that aggregate accuracy metrics obscure. We propose a three-tier taxonomy of niche benchmarks (academic-formal, industry-vertical, and indie-informal), articulate seven design principles for constructing one, and present three short vignettes---SkateBench, SnitchBench, and PIF-Bench---that illustrate how benchmarks across radically different scopes and methodological styles each surface failure modes invisible to general evaluation. We address the standard objections to benchmark proliferation (fragmentation, quality variance, evaluator conflicts, cultural bias) and argue that the appropriate response is not consolidation but better infrastructure for documentation (e.g., benchmark cards), portfolio-level evaluation, and meta-analysis across the tail.
+\end{abstract}
+
+\medskip
+\noindent\textbf{Keywords:} large language models, benchmarks, evaluation, domain specialization, model selection, Goodhart's law, hallucination, position paper
+
+% ── 1. Introduction ──────────────────────────────────────────────────────────
+\section{Introduction}
+\label{sec:introduction}
+
+The first decade of large language model (LLM) evaluation was organized around a small number of canonical benchmarks: MMLU \citep{hendrycks2021measuring} for knowledge, HumanEval \citep{chen2021evaluating} for code, GSM8K \citep{cobbe2021gsm8k} for arithmetic reasoning, TriviaQA \citep{joshi2017triviaqa} and Natural Questions \citep{kwiatkowski2019natural} for factual recall, and HELM \citep{liang2023holistic} for multi-dimensional comparison. These benchmarks served two communities well. They provided researchers with comparable scores across model families, and they provided practitioners with a first-pass shortlist of models worth considering for deployment.
+
+By April 2026, both functions have eroded. On MMLU, the leading frontier models---GPT-5.3, Claude Opus 4.7 Adaptive, Gemini 3.1 Pro---score within roughly three percentage points of one another \citep{artificialanalysis2026}. On GPQA Diamond, designed to be ``Google-proof'' and harder to memorize \citep{rein2023gpqa}, the same models cluster in the low-to-mid nineties. Performance differences at this scale are statistically thin, behaviorally indistinguishable to most users, and offer the practitioner essentially no signal about which model will work better for a specific deployment. Worse, a sustained body of evidence demonstrates that public benchmark items now appear in pre-training corpora and post-training datasets, inflating reported scores by amounts larger than the gaps between competing systems \citep{sun2024contamination,jacovi2023stop,xu2024benchmark}. \citet{karpathy2025year} characterizes the situation as an ``evaluation crisis,'' in which the metrics most cited in marketing have become the metrics least informative about deployment behavior.
+
+The community's response has been a remarkable proliferation of \emph{niche benchmarks}---evaluations that are narrower in scope, more grounded in a specific domain or task, and often produced outside of the major academic labs. A 2025 survey catalogs 283 such benchmarks across general, domain-specific, and target-specific categories and notes that the tail is growing faster than the head \citep{liu2025survey}. Domain-specific examples include MedQA \citep{jin2021disease}, MultiMedQA \citep{singhal2023large}, and several biomedical benchmarks for clinical reasoning; LegalBench \citep{guha2024legalbench} and LawBench \citep{fei2023lawbench} for legal reasoning; FinBen \citep{xie2024finben} for financial NLP; BridgeBench, introduced via the SDBench framework for bridge engineering \citep{sdbench2025}; PIF-Bench for AI-generated donor intelligence \citep{lijo2026pifbench}\footnote{PIF-Bench is open source at \url{https://github.com/getromy-app/pif-bench}.}; and---outside the academic literature entirely---SkateBench \citep{browne2025skatebench}, a 390-item evaluation of skateboarding-trick knowledge built by an independent developer, and SnitchBench \citep{browne2025snitchbench}, a behavioral evaluation of whether models will autonomously contact authorities under specific tool-use conditions.
+
+The dominant framing in the recent literature treats this proliferation as a problem. Surveys describe the field as ``fragmented'' \citep{benchmarking_se2025}, decry the absence of standardization, and propose meta-frameworks to consolidate or rank benchmarks against each other \citep{qian2026benchmark2,benchbench2026}. The implicit prescription is that the long tail of niche benchmarks should converge toward a smaller number of well-engineered general evaluations, supplemented by a curated set of domain-specific benchmarks built to academic standards.
+
+We disagree. The proliferation of niche benchmarks is not a defect of the evaluation ecosystem; it is the ecosystem responding correctly to two structural facts. First, the deployment surface of LLMs is itself extraordinarily long-tailed. The set of tasks for which an organization might choose between models---donor research, bridge inspection, skateboarding-trick disambiguation, pediatric oncology summarization, legal contract review, fraud-pattern detection in casino floor data---is far larger than any general benchmark can cover, and the failure modes that matter in any one of those tasks are unlikely to be the failure modes that drive headline accuracy gains on MMLU. Second, the value of a benchmark is not exhausted by its role in model selection. A well-constructed niche benchmark generates a second, less commonly recognized signal: a feedback channel into the laboratories that train these models, identifying specific behavioral gaps that aggregate metrics obscure.
+
+This paper argues that niche benchmarks deserve to be treated as first-class evaluation infrastructure, not as a transitional symptom of an immature field. We make four contributions:
+
+\begin{enumerate}[leftmargin=*]
+  \item We characterize the \textbf{saturation crisis} on general benchmarks empirically and connect it to the well-established literature on Goodhart's law \citep{goodhart1975,strathern1997} and reward overoptimization (\Cref{sec:saturation}).
+  \item We articulate the \textbf{bidirectional value thesis}: niche benchmarks serve practitioners (model selection within a deployment context) \emph{and} frontier labs (gap discovery and post-training feedback) in ways that general benchmarks structurally cannot (\Cref{sec:bidirectional}).
+  \item We propose a \textbf{three-tier taxonomy} of niche benchmarks---academic-formal, industry-vertical, and indie-informal---and argue that each tier contributes a distinct and complementary signal (\Cref{sec:taxonomy}).
+  \item We provide a \textbf{design playbook} of seven principles for constructing a niche benchmark, illustrated with three short vignettes spanning the taxonomy---SkateBench (Tier 3), SnitchBench (Tier 3), and PIF-Bench (Tier 2)---and address the standard counterarguments around fragmentation, quality variance, and evaluator conflict (\Cref{sec:playbook,sec:counterarguments}).
+\end{enumerate}
+
+This is a position paper. Where we present empirical claims (saturation gaps, contamination evidence, PIF-Bench failure-mode counts), we cite primary sources. Where we make normative claims (about how the evaluation ecosystem should be structured), we mark them as such and engage the strongest opposing views we have found in the literature. The first author is affiliated with R\={o}my, the developer of one of the systems evaluated in PIF-Bench; this conflict is discussed in \Cref{sec:limitations}.
+
+% ── 2. The Saturation Crisis ─────────────────────────────────────────────────
+\section{The Saturation Crisis on General Benchmarks}
+\label{sec:saturation}
+
+Three independent failure modes are converging to render the general-capability leaderboard a poor instrument for both model comparison and capability tracking: \textit{score compression}, \textit{contamination}, and \textit{Goodhart-style overoptimization}. We treat each in turn.
+
+\subsection{Score Compression at the Frontier}
+\label{sec:compression}
+
+Knowledge-recall benchmarks have entered the asymptotic regime. On MMLU, top frontier models in early 2026 score in the 91--94 range, with the spread between first and fifth place narrower than the typical run-to-run variance of any individual model under temperature sampling \citep{artificialanalysis2026}. On GPQA Diamond, designed to defeat web-search and recall-based shortcuts \citep{rein2023gpqa}, the leaders cluster in the low nineties. On HumanEval, frontier coding models exceed 95\% pass@1, leaving virtually no headroom \citep{chen2021evaluating}. The MMLU-Pro benchmark, introduced explicitly to recover discrimination at the top \citep{wang2024mmlupro}, has itself begun to compress as reasoning-augmented models close on the upper bound.
+
+Score compression has two practical consequences. The first is that small differences in headline numbers cannot be cleanly attributed to capability differences; they may reflect stylistic alignment with the benchmark's particular phrasing conventions, prompt-formatting choices, or chance variation. The second is that the discriminative power of these benchmarks is being preserved primarily at the lower-mid range, where smaller models still spread out---which is to say, in a region of the score distribution that frontier model selection no longer cares about.
+
+The standard response is to build harder benchmarks. Humanity's Last Exam (HLE), introduced as an expert-level frontier evaluation, currently shows top scores in the 30--35\% range \citep{phan2025hle}. This restores discrimination, but only temporarily; the same dynamic that compressed MMLU will compress HLE on a one-to-three-year timescale. The harder-benchmark response treats compression as a moving target to be repeatedly outrun, not as a structural feature of single-leaderboard evaluation.
+
+\subsection{Contamination of Public Benchmarks}
+\label{sec:contamination}
+
+Contamination---the appearance of benchmark items in the training data of the models being evaluated---has been documented at scale across MMLU, GSM8K, HumanEval, and several question-answering benchmarks \citep{sainz2023nlp,jacovi2023stop,golchin2024timetravel,xu2024benchmark}. The evidence comes in three flavors. Direct n-gram matching against pre-training corpora identifies verbatim or near-verbatim presence of benchmark items. Membership-inference attacks exploit the loss differential between training and held-out data. Inference-time decontamination protocols, which evaluate models against perturbed versions of the same items, recover deflated accuracies that differ from headline scores by 19--23 percentage points on GSM8K and MMLU \citep{sun2024contamination}.
+
+Contamination is not a fixable bug. Once a benchmark is published, items propagate through web-scraping pipelines, paper repositories, blog posts, and forum discussions; subsequent training runs cannot avoid them without expensive deduplication that itself imperfectly succeeds. The infrastructure for live, contamination-resistant benchmarks (LiveBench \citep{white2024livebench}, LiveCodeBench \citep{jain2024livecodebench}) is a partial mitigation, but it requires continuous maintenance and faces its own challenges as items age out of the ``live'' window.
+
+Contamination interacts with score compression in a particularly awkward way: as the gap between systems narrows, the magnitude of contamination-induced inflation becomes large relative to the gaps being measured. A benchmark on which the top five models score 91, 92, 92, 93, and 94 and on which contamination is plausibly worth 5--10 points to any of them is a benchmark that cannot reliably rank the models at all.
+
+\subsection{Goodhart's Law at Industrial Scale}
+\label{sec:goodhart}
+
+\citet{goodhart1975} observed that statistical regularities collapse when those regularities become policy targets, an idea later sharpened by \citet{strathern1997} into the formulation that has become canonical: ``when a measure becomes a target, it ceases to be a good measure.'' The benchmark economy provides a textbook case. Pre-training corpora are filtered, post-training data is constructed, and reinforcement learning from human feedback (RLHF) reward models are tuned, all with explicit awareness of the benchmarks on which the resulting model will be reported. This is not malfeasance---it is the rational response to a competitive landscape in which benchmark scores drive press coverage, customer adoption, and capital allocation. But it is also the precise pattern Goodhart and Strathern warned against. \citet{openai2022goodhart} and follow-up work measure the effect directly in RLHF: as proxy reward increases, true human preference initially tracks it and then diverges, sometimes substantially.
+
+\citet{linegoesup2025} reviews the cumulative effect across the major leaderboards and concludes that benchmark scores are a fundamentally unreliable measure of capability under sustained competitive pressure. The author identifies three failure modes---over-fitting to benchmark-specific patterns, lack of demonstrated correlation with deployed task performance, and failure of high-scoring models to generalize to adversarial or out-of-distribution variants---and argues that newer specialized benchmarks (SciEval, FrontierMath, RE-Bench) have not escaped them.
+
+\subsection{Implications}
+\label{sec:saturationimplications}
+
+The combined effect of compression, contamination, and Goodhart pressure is that general-capability leaderboards now provide weaker model-selection signal than at any point in the field's recent history, and weaker capability-tracking signal for the laboratories building these models. The standard response---build a harder benchmark, then another, then another---is correct but not sufficient. Each new general-capability benchmark inherits the same vulnerabilities as soon as it becomes consequential. The remainder of this paper argues that the more durable response is structural: a healthy ecosystem of niche benchmarks distributed across many domains, audiences, and methodological styles, no one of which is a target large enough to be worth gaming.
+
+% ── 3. The Bidirectional Value Thesis ────────────────────────────────────────
+\section{The Bidirectional Value of Niche Benchmarks}
+\label{sec:bidirectional}
+
+A niche benchmark is one whose scope is narrowed deliberately: to a specific domain, task, behavioral pattern, or audience. The narrowing is sometimes dismissed as a limitation. We argue it is the source of value. Narrow scope enables two functions that broad benchmarks cannot perform well: it gives practitioners a principled basis for model selection within a real deployment context, and it gives frontier laboratories a discriminating signal that exposes specific failure modes at the frontier.
+
+\subsection{Practitioner-Side Value: Model Selection for the Deployed Task}
+\label{sec:practitioner}
+
+For most organizations deploying LLMs, ``which model is best on MMLU'' is the wrong question. The right question is ``which model produces the best behavior on the specific task we are deploying, under the constraints we operate under, given the cost we are willing to pay.'' General benchmarks answer the first question---badly, given the saturation issues described above. Niche benchmarks answer the second one well, when they exist for the relevant task.
+
+PIF-Bench provides a concrete illustration \citep{lijo2026pifbench}. The benchmark evaluates AI-generated donor research reports against verified public records on seven dimensions weighted by their professional impact: factual precision, discovery recall, hallucination rate, capacity estimation accuracy, source attribution, structural completeness, and actionability. Across five Tier~A prospects evaluated on four systems, PIF scores ranged from 76.9 (ChatGPT) to 94.1 (R\={o}my)---a 17.2-point spread. On MMLU, the same four underlying language model families would have ranked within three or four points of one another, providing no actionable basis for a fundraising organization to choose among them. Within the donor-research deployment context, the spread is not noise; it corresponds to specific operational consequences (missed Atlanta-specific giving records, recommended cold outreach to a deceased prospect, a 50\% over-statement of net worth in one report) that a development officer can directly evaluate against their own workflow.
+
+The same pattern recurs across other niche benchmarks. \citet{guha2024legalbench} report substantial inter-system variation across the 162 LegalBench tasks, with rankings that do not track general-capability scores. \citet{singhal2023large} report that medical question-answering performance correlates only loosely with general-capability scores in the regime where both are moderate-to-high. Even in the indie tail, SkateBench currently shows GPT-5.3 at 98.6\% and Grok 4 at 79\% on the same trick-naming task, a 20-point spread that would be invisible on any general benchmark \citep{browne2025skatebench}.
+
+The implication for practitioners is that niche benchmarks are not optional supplements to general evaluation. For any deployment in which the cost of a model-selection error is substantial, they are the primary instrument of choice; general benchmarks are an extremely coarse pre-filter. A medical AI deployment that ignores MedQA in favor of MMLU is operating under the wrong evaluation regime. A financial analysis deployment that ignores FinBen in favor of GPQA is doing the same. The principle generalizes.
+
+\subsection{Lab-Side Value: Gap Discovery and Post-Training Signal}
+\label{sec:labside}
+
+The less commonly discussed half of the bidirectional thesis concerns the laboratories that train these models. Frontier labs face a structural problem that mirrors the practitioner's problem from the opposite direction: as general benchmarks saturate, the labs lose visibility into where their models actually fail in ways that matter to deployed users. A model that achieves 94\% on MMLU has a margin for improvement that is small in absolute terms (six points) and almost entirely composed of the items the benchmark designers themselves considered most ambiguous. The remaining six points are not, in general, a representative cross-section of the failure modes that downstream users encounter.
+
+Niche benchmarks fill this visibility gap. They are diagnostic rather than gradable. A 23-point gap on the deceased-prospect prompt in PIF-Bench (\Cref{sec:vignette-pif}) tells the lab building one of those four systems exactly what kind of training or post-training intervention would close it: explicit handling of obituary-confirmed deaths in retrieval-augmented contexts; refusal-to-recommend behavior when the prospect's death is acknowledged in the same response that recommends a direct ask; exposure during instruction tuning to family-foundation-pivot examples. None of this is visible on MMLU. None of it is visible on GPQA Diamond. It is visible on PIF-Bench because PIF-Bench was constructed by people who care about exactly that failure mode.
+
+The same logic applies to SnitchBench: a behavioral evaluation that systematically tests whether models will autonomously contact regulators or media when given certain tool combinations is not a leaderboard exercise; it is a capability-elicitation probe that surfaces alignment-relevant behavior that aggregate metrics will not catch. Frontier labs publish capability and safety reports; niche behavioral benchmarks are exactly the kind of external probe that complements internal red-teaming and provides reproducible evidence about specific behaviors.
+
+There is a question of whether labs in fact use niche benchmarks this way. Anecdotally, we observe that several major labs reference indie benchmarks in their model release posts (with \citet{karpathy2025year} explicitly citing community-built evals as part of his year-end capability assessment) and that fixes for specific failure modes identified in viral indie benchmarks appear in subsequent releases. We cannot verify from outside any lab whether these benchmarks enter the formal post-training process; what is observable is that the public discussion of model behavior has become substantially organized around the long tail of niche evaluations, and that frontier labs respond to that discussion. The communication channel exists. Whether labs will treat it as load-bearing infrastructure or as ad-hoc PR signal is a question this paper is in part written to influence.
+
+\subsection{Why General Benchmarks Cannot Do This}
+\label{sec:generalcannot}
+
+The bidirectional argument depends on one structural claim: niche benchmarks generate value of a kind that general benchmarks structurally cannot. The claim has three components. First, broad benchmarks aggregate over many tasks, which means their headline scores convey limited information about any specific task. The MMLU-improving training intervention is, by construction, the average-improving intervention; targeted improvements show up only weakly because the benchmark dilutes them. Second, general benchmarks face the strongest contamination pressure because they are the most-cited targets; the discriminative power they retain is concentrated in items most likely to be subtly memorized. Third, general benchmarks face Goodhart pressure proportional to their stake; the larger their commercial visibility, the harder the surrounding ecosystem optimizes against them, and the less their scores correspond to underlying capability movement.
+
+Niche benchmarks are partially insulated from each of these dynamics by virtue of their narrow scope. They are large enough to discriminate within their domain but too small individually to be worth gaming. Each one carries less commercial visibility than MMLU, which is exactly what protects the signal it carries. The aggregate over many niche benchmarks, however, can be made larger and more informative than any single general benchmark, provided the field develops the meta-infrastructure to support that aggregation. We return to this in \Cref{sec:counterarguments}.
+
+% ── 4. A Three-Tier Taxonomy of Niche Benchmarks ─────────────────────────────
+\section{A Three-Tier Taxonomy of Niche Benchmarks}
+\label{sec:taxonomy}
+
+Niche benchmarks differ as much from one another as they collectively differ from MMLU. To make the ecosystem analyzable, we propose a taxonomy with three tiers distinguished by the methodological standards of their construction, the composition of their producer community, and the audience they primarily serve. The tiers are not a quality hierarchy. They are functional categories, each contributing a different and complementary signal to the broader evaluation ecosystem.
+
+\subsection{Tier 1: Academic-Formal}
+\label{sec:tier1}
+
+Academic-formal benchmarks are produced inside research institutions or research-aligned consortia, follow peer-reviewed methodological standards, and are typically tied to one or more publications that document their construction and validation. They are designed for citation, comparison across systems by independent researchers, and reuse over multi-year time horizons.
+
+Examples include MedQA \citep{jin2021disease} and MultiMedQA \citep{singhal2023large} for medical question-answering, LegalBench \citep{guha2024legalbench} and LawBench \citep{fei2023lawbench} for legal reasoning, FinBen \citep{xie2024finben} for financial NLP, BBQ \citep{parrish2022bbq} for social bias, BIG-Bench \citep{srivastava2023bigbench} as a meta-collection of capability probes, and HELM \citep{liang2023holistic} as a multi-dimensional evaluation harness. The emerging Domain Specialization framework \citep{ling2024domain} and the Domain Specific Benchmarks for Multimodal LLMs survey \citep{he2025domainmllm} attempt to systematize the construction of new academic-formal benchmarks across additional disciplines.
+
+Tier 1 strengths are scientific rigor (documented methodology, often inter-annotator agreement statistics, appropriate statistical comparisons), longevity (a peer-reviewed benchmark can remain useful for years), and external credibility (results are readily citable in further research). Tier 1 weaknesses are slow construction (multi-year development is common), high contamination risk (academic publication accelerates leakage into training corpora), and a tendency toward task formats that match academic evaluation conventions (multiple-choice, single-turn) rather than realistic deployment workflows.
+
+\subsection{Tier 2: Industry-Vertical}
+\label{sec:tier2}
+
+Industry-vertical benchmarks are produced by domain practitioners or vertical AI vendors, optimized for the workflows of a specific industry, and constructed with reference to professional standards rather than academic conventions. They are designed for system selection within that industry, for internal capability tracking by the vendor, and---when published openly---for accountability claims about deployed performance.
+
+Examples include PIF-Bench for AI-generated donor research \citep{lijo2026pifbench}; BridgeBench, introduced via the SDBench survey-based framework, for bridge engineering knowledge \citep{sdbench2025}; the DMind Benchmark for Web3 reasoning \citep{dmind2025}; STOCKBENCH for realistic stock trading evaluation \citep{stockbench2025}; the BloombergGPT family of internal financial evaluations \citep{wu2023bloomberggpt}; and the closed evaluations operated by vertical AI vendors such as Harvey AI (legal), Abridge (clinical documentation), and Hippocratic AI (clinical agents). ProLLM \citep{prollm2025} represents an emerging effort to standardize industry-vertical evaluation across multiple sectors and languages.
+
+Tier 2 strengths are workflow fit (the evaluation matches how the system is actually used), domain-grounded weighting (failure modes are weighted by professional consequence rather than by frequency), and the inclusion of edge cases and traps that academic benchmarks rarely capture (deceased prospects, sensitive legal histories, time-sensitive financial events). Tier 2 weaknesses include vendor conflict-of-interest risk when the benchmark designer also competes in the evaluated category, frequent closed-source operation that limits independent reproducibility, and audiences narrow enough that benchmarks may be unknown outside the relevant industry.
+
+\subsection{Tier 3: Indie-Informal}
+\label{sec:tier3}
+
+Indie-informal benchmarks are produced by individual developers, hobbyists, or small communities, distributed primarily through web posts, social media, or GitHub repositories, and constructed with minimal academic apparatus. They are designed for fast iteration, viral discoverability, and capturing a specific behavioral pattern that the producer cares about enough to instrument.
+
+Examples include SkateBench \citep{browne2025skatebench}, a 390-item evaluation of LLM knowledge of skateboarding tricks; SnitchBench \citep{browne2025snitchbench}, a behavioral evaluation of autonomous whistleblowing under various tool-use conditions; SimpleBench \citep{simplebench2024}, a small set of common-sense reasoning probes that target failure modes obvious to humans; the ``Pelican on a Bicycle'' SVG generation test popularized by Simon Willison and reused widely as an informal capability probe; and a long tail of personal evaluation suites maintained by individual developers as their own model-selection harness.
+
+Tier 3 strengths are speed (an indie benchmark can be conceived, built, and published in hours), novelty (indie benchmarks routinely identify capability or behavior axes not yet covered in the academic literature), saturation resistance (small benchmarks under one person's idiosyncratic taste are hard to game economically), and high-bandwidth communication with both lab researchers and end users (a SkateBench-style ranking with cost columns is interpretable to a much wider audience than a multi-page benchmark paper). Tier 3 weaknesses include methodological informality (often no inter-annotator agreement, no error analysis, no formal statistical comparison), unreproducibility risk (items may change over time, infrastructure may be dropped), and the risk of overfitting to one person's intuitions about what is interesting.
+
+\subsection{What Each Tier Contributes}
+\label{sec:tiercomparison}
+
+\Cref{tab:tiers} summarizes the comparison. The central claim is that the three tiers are complements, not substitutes. A healthy evaluation ecosystem has all three operating at scale.
+
+\begin{table}[h]
+\centering
+\caption{Three-tier taxonomy of niche benchmarks. The tiers are functional categories distinguished by methodological standards, producer community, and primary audience, not a quality hierarchy.}
+\label{tab:tiers}
+\small
+\begin{tabular}{@{}lp{3.5cm}p{3.5cm}p{3.5cm}@{}}
+\toprule
+ & \textbf{Tier 1: Academic-Formal} & \textbf{Tier 2: Industry-Vertical} & \textbf{Tier 3: Indie-Informal} \\
+\midrule
+Producer       & Research institutions, peer-reviewed consortia & Domain practitioners, vertical AI vendors & Individual developers, small communities \\
+Methodology    & Documented, validated, often with inter-annotator agreement & Domain-grounded, impact-weighted, workflow-aligned & Minimal apparatus, fast-iteration \\
+Primary audience & Researchers, methodology builders & Industry practitioners, procurement teams & End users, lab researchers, social media \\
+Citation form  & Peer-reviewed paper & Whitepaper, blog, sometimes preprint & Web post, GitHub, tweet \\
+Construction time & 12--36 months & 3--12 months & Hours to weeks \\
+Saturation risk & High (most-cited targets) & Medium (industry-specific stakes) & Low (small individual stakes) \\
+Contamination risk & High (published openly, easily scraped) & Medium (often partially closed) & Low (small, may be private) \\
+Examples       & MedQA, LegalBench, FinBen, GPQA, HELM & PIF-Bench, BridgeBench, BloombergGPT, ProLLM & SkateBench, SnitchBench, SimpleBench \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The taxonomy clarifies a frequent confusion in the literature. When papers argue that ``benchmarks are unreliable,'' they typically mean Tier 1 benchmarks under high-stakes commercial pressure (\Cref{sec:saturation}). Tier 2 benchmarks face less commercial pressure individually because each one matters to a smaller audience, and Tier 3 benchmarks face essentially none because they serve too small a community to be worth strategic optimization against. The tiers degrade gracefully under exactly the pressures that have broken the canonical leaderboards.
+
+Conversely, when papers argue that ``the field needs more rigorous benchmarks,'' they typically mean that Tier 3 benchmarks should be held to Tier 1 standards. We disagree. Tier 3 benchmarks are valuable in part because they are not held to Tier 1 standards: their speed and novelty depend on methodological lightness. The right response is not to stiffen Tier 3 but to develop the meta-infrastructure (\Cref{sec:counterarguments}) that lets readers calibrate their reliance on each tier appropriately.
+
+% ── 5. Three Benchmarks, Three Signals ───────────────────────────────────────
+\section{Three Benchmarks, Three Signals: Vignettes Across the Tiers}
+\label{sec:casestudy}
+
+To make the bidirectional thesis concrete, we summarize three niche benchmarks---one from each tier of the taxonomy in \Cref{sec:taxonomy}---and the kind of signal each produces that general-capability evaluation does not. The vignettes are intentionally brief; the goal is to demonstrate that the same structural argument applies across radically different methodological styles, scopes, and producer communities.
+
+\subsection{SkateBench (Tier 3): Discrimination on a Saturated Frontier}
+\label{sec:vignette-skate}
+
+SkateBench \citep{browne2025skatebench} is a 390-item evaluation of LLM knowledge of skateboarding tricks, built and maintained by an independent developer outside any academic institution. Each item asks a model to identify or describe a specific trick; correctness is verifiable against established skateboarding reference materials. The benchmark is methodologically light by Tier 1 standards: no inter-annotator agreement statistics, no formal published methodology, no peer review.
+
+It is also the most informative single signal currently available on its specific question. As of April 2026, GPT-5.3 scores 98.6\% on SkateBench at an evaluation cost of approximately \$0.07 per full run; Grok 4 scores 79\% at approximately \$4.86 per full run---a 19.6-point accuracy spread combined with a roughly 70$\times$ cost differential on a 390-item subdomain. No general-capability benchmark surfaces this gap. MMLU contains essentially no skateboarding-relevant items; HumanEval and GPQA Diamond contain none at all. The two systems are within three points of each other on every general benchmark and indistinguishable to a casual user. SkateBench separates them cleanly.
+
+The diagnostic signal for laboratories is precise. A 19.6-point accuracy gap on a small subculture-specific vocabulary at a 70$\times$ cost differential implicates either tokenization coverage of subcultural terms, retrieval conditioning on niche vocabulary, or the underlying model's capacity for memorizing a long-tail factual domain. Each of these is a tractable engineering question that an internal capability team could investigate. None of it is visible without a benchmark of exactly this shape.
+
+\subsection{SnitchBench (Tier 3): Behavioral Probes Beyond Aggregate Accuracy}
+\label{sec:vignette-snitch}
+
+SnitchBench \citep{browne2025snitchbench} is a behavioral evaluation, also built outside the academic literature, that systematically tests whether language models will autonomously contact authorities (government regulators, media organizations) when given specific tool combinations and ethically ambiguous scenarios. The benchmark currently runs each tested model through 640 total scenarios across multiple variants, uses an LLM-as-judge protocol (Gemini 2.0 Flash) to classify the autonomous outreach behavior, and reports per-model rates of government and media contact across the variant matrix.
+
+The signal SnitchBench produces is structurally different from any capability benchmark. It is not measuring whether models can do something correctly; it is measuring what they do unprompted under specified conditions. This is alignment-relevant behavior in the most operationally direct sense: a model that ``snitches'' at 90\% in one tool configuration and 10\% in a similar one has an instruction-following inconsistency that matters for any deployment giving it agentic tool access. No general-capability benchmark captures this axis. MMLU, HumanEval, and GPQA all assume the system is being asked to produce something specific; SnitchBench measures what happens when the system is given latitude.
+
+For laboratories, the diagnostic signal is equally precise: per-variant snitch rates expose specific behavioral inconsistencies that internal red-teaming may not surface, because the variants are constructed by an external observer with different intuitions about which conditions matter. The benchmark is also an example of a category of evaluation---behavioral propensity under tool conditions---that the field has barely begun to instrument and that general benchmarks are structurally incapable of covering.
+
+\subsection{PIF-Bench (Tier 2): Edge-Case Adaptation in a Vertical Workflow}
+\label{sec:vignette-pif}
+
+PIF-Bench \citep{lijo2026pifbench} evaluates AI-generated donor-research reports against verified public records on seven dimensions weighted by professional impact, across five Tier~A philanthropic prospects evaluated on four systems. The benchmark is more methodologically formal than the two Tier 3 vignettes above (documented dimensions, impact-weighted scoring, public ground truth from IRS Form 990 / SEC EDGAR / FEC / county property records) but narrower in audience: the immediate community is nonprofit fundraising professionals.
+
+Three diagnostic signals from the published evaluation \citep{lijo2026pifbench} illustrate the kind of failure modes that vertical benchmarks surface. First, \textit{temporal displacement}: Gemini 3.1 Pro reported that MacKenzie Scott holds ``roughly 4\% stake in Amazon,'' which is the 2019 divorce-settlement figure---five years stale relative to the April 2026 test date, during which she had divested approximately 42\% of her original stake. The same pattern recurred on a different prompt: both ChatGPT and Gemini treated Laurene Powell Jobs's December 2025 divestment of her Monumental Sports stake as a current asset four months after it occurred. Second, \textit{edge-case adaptation}: on the Agnes Gund prompt (a prospect deceased in September 2025), three of four systems pivoted correctly to family-foundation engagement strategy, while one continued to recommend a direct \$5M--\$10M ask qualified as ``if alive,'' producing a 23-point PIF-score gap on that single prospect. Third, \textit{geographic recall}: ChatGPT systematically failed to surface prospect-anchor information matching the requester's geographic context (Atlanta-area Scott gifts; Texas HBCU Smith partnerships; rural Colorado Hastings anchors), scoring an average Discovery Recall of 63---the lowest single-dimension score in the evaluation.
+
+Each of these is a behavioral pattern that targeted post-training intervention could in principle address: temporal-currency conditioning during retrieval-augmented generation, explicit handling of obituary-confirmed deaths in instruction tuning, geography-conditioned retrieval tuning. None of them is visible on a general-capability leaderboard.
+
+\subsection{The Cost of Producing Niche-Benchmark Signal}
+\label{sec:cost}
+
+What makes the three vignettes a coherent set is not their methodological similarity---they could hardly be more different in producer community, formality, or scope---but the cost-versus-information ratio they share. SkateBench was built and maintained by one developer and runs for under \$5 per system at current API rates. SnitchBench's full multi-variant evaluation runs in the low tens of dollars. PIF-Bench's five-prospect, four-system evaluation cost approximately \$50 in API and subscription expenses and approximately one human-week of design and execution time \citep{lijo2026pifbench}.
+
+In each case, the marginal cost of producing a niche-benchmark signal is small, the marginal information is large, and the diagnostic precision is concrete enough to inform targeted engineering work. Compare this to the marginal cost of running another MMLU evaluation against a system that is already saturated against MMLU: the marginal information is essentially zero. The constraint on niche-benchmark adoption is not cost. It is cultural: the field has not yet developed the convention that frontier laboratories are expected to attend to the long tail. We argue that they should be.
+
+% ── 6. The Niche Benchmark Design Playbook ────────────────────────────────────
+\section{A Design Playbook for Niche Benchmarks}
+\label{sec:playbook}
+
+A niche benchmark generates value when it is constructed in a way that produces signal practitioners and labs can use. Many of the new benchmarks in the long tail do not. We extract from the case-study literature, our own experience building PIF-Bench, and the observable design patterns of the most-cited Tier 2 and Tier 3 benchmarks, seven principles that distinguish high-signal niche benchmarks from low-signal ones.
+
+\paragraph{Principle 1: Domain-Grounded Dimensions.}
+The dimensions on which a system is scored should correspond to qualities that practitioners in the target domain actually evaluate. They should not be inherited unchanged from generic NLP evaluation conventions. PIF-Bench's seven dimensions (factual precision, discovery recall, hallucination rate, capacity estimation accuracy, source attribution, structural completeness, actionability) were derived from analysis of standard prospect-research workflows; they do not look like the dimensions of MMLU or HELM, and that is exactly why they are diagnostic. Tier 1 benchmarks that abandon domain-grounding in favor of multiple-choice convenience produce scores that are easier to compute and weaker to act on.
+
+\paragraph{Principle 2: Verifiable Ground Truth.}
+The benchmark should be scorable against externally verifiable facts, not against the judgment of the benchmark constructor. PIF-Bench scores against IRS Form 990 filings, SEC EDGAR records, county property assessments, and FEC contributions; all of these are public and reproducible. SkateBench's 390 trick definitions are verifiable against skateboarding reference materials. SnitchBench's outcomes are verifiable against the deterministic output of the model under known tool conditions. Benchmarks that score against ``what the constructor thinks is a good answer'' inherit the constructor's biases and lose external defensibility.
+
+\paragraph{Principle 3: Impact-Weighted Scoring.}
+Where the benchmark uses a composite score, the dimension weights should reflect the cost of failure in deployed practice rather than producer convenience. PIF-Bench weights hallucination rate at 25\% and structural completeness at 5\% because in fundraising practice, a fabricated claim damages a donor relationship far more than an incomplete report does. A medical benchmark that weighted formatting consistency equally with diagnostic accuracy would mis-rank systems against any plausible deployment criterion. The principle generalizes: weights are domain-specific assertions and should be defensible in domain terms.
+
+\paragraph{Principle 4: Edge-Case and Trap Inclusion.}
+The benchmark should include cases that probe specific failure modes the benchmark designer hypothesizes are important and underexplored. SnitchBench (\Cref{sec:vignette-snitch}) constructs tool-use combinations that probe model agency under ethically ambiguous conditions---scenarios that are not part of any general-capability evaluation. PIF-Bench (\Cref{sec:vignette-pif}) includes the Agnes Gund deceased-prospect prompt precisely because incorrect handling of this case is operationally catastrophic, even though the case is rare in absolute frequency. Benchmarks that draw items only from a representative sample of common cases miss precisely the failures most worth catching.
+
+\paragraph{Principle 5: Temporal Freshness and Refresh Discipline.}
+Domain knowledge changes; benchmarks need to accommodate it. The Powell Jobs Monumental Sports divestment occurred in December 2025; the PIF-Bench evaluation in April 2026 surfaced which systems had updated to that fact and which had not. A benchmark constructed in 2023 against 2023 ground truth is not, in 2026, evaluating the same task. High-signal niche benchmarks document a ground-truth-as-of date and refresh on a schedule appropriate to their domain (annually for slow-moving domains, monthly or live for fast-moving ones).
+
+\paragraph{Principle 6: Public Methodology, Documented Limitations.}
+A benchmark whose construction is opaque cannot be calibrated against by readers. We strongly recommend the BenchmarkCards framework \citep{sokol2024benchmarkcards} or an equivalent structured documentation: stated objectives, intended users, data sources, methodology, evaluation procedure, known risks, limitations, and licensing. The documentation overhead is small relative to the construction cost and dramatically increases the benchmark's downstream usability. Tier 3 benchmarks especially benefit from this: a one-page card distinguishes a serious indie evaluation from a casual one and gives readers a basis for trust calibration.
+
+\paragraph{Principle 7: Practitioner-Led, Not Benchmark-Engineer-Led.}
+The construction process should foreground practitioners in the target domain. They identify the failure modes that matter (which the benchmark engineer would not). They calibrate the dimension weights (which the benchmark engineer cannot defend). They sanity-check the ground truth (which the benchmark engineer often does not know how to verify). This is the principle most often violated by Tier 1 benchmarks built by NLP researchers without sustained engagement with domain practitioners; it is more frequently respected by Tier 2 benchmarks built by practitioners themselves; and it is enforced by construction in Tier 3 benchmarks, which exist only because the producer cared enough about a specific domain to instrument it.
+
+\Cref{alg:design} formalizes the design protocol implied by these seven principles.
+
+\begin{algorithm}[H]
+\caption{Niche Benchmark Construction Protocol}
+\label{alg:design}
+\begin{algorithmic}[1]
+\Require Target domain $D$, target failure modes $\mathcal{F}$, practitioner panel $P$
+\Ensure Benchmark $B$ with documented card $\text{Card}(B)$
+\State Identify domain-grounded dimensions $\mathcal{D} = \{d_1, \ldots, d_k\}$ from practitioner panel $P$ (Principle 1)
+\State For each $d_i$, identify external verifiable ground-truth source $G_i$ (Principle 2)
+\State Calibrate dimension weights $\{w_i\}$ via practitioner consultation, weighted by cost of failure (Principle 3)
+\State Construct item set $I$, including representative items \emph{and} explicit edge-case probes for each $f \in \mathcal{F}$ (Principle 4)
+\State Document ground-truth-as-of date $t_0$; specify refresh schedule $\Delta t$ (Principle 5)
+\State Score systems on $I$, classifying each item by dimension and ground-truth source
+\State Compute per-dimension scores and composite $B = \sum_i w_i \cdot d_i$
+\State Construct benchmark card $\text{Card}(B)$ documenting purpose, methodology, sources, limitations, licensing (Principle 6)
+\State Validate end-to-end with practitioners $P$; iterate if dimension weights or item coverage are challenged (Principle 7)
+\State \Return $(B, \text{Card}(B))$
+\end{algorithmic}
+\end{algorithm}
+
+The protocol is not novel; it is a synthesis of patterns visible across the highest-quality niche benchmarks in the literature. Stating it explicitly serves two purposes. First, it gives prospective benchmark builders a concrete starting framework. Second, it gives readers of niche benchmarks a checklist against which to calibrate trust: a benchmark that satisfies six of seven principles is more reliably actionable than one that satisfies two.
+
+% ── 7. Counterarguments and Mitigations ──────────────────────────────────────
+\section{Addressing the Standard Counterarguments}
+\label{sec:counterarguments}
+
+The position we take above runs against several established critiques of benchmark proliferation. We engage four of the strongest in turn.
+
+\subsection{The Fragmentation Critique}
+\label{sec:fragmentation}
+
+The dominant critique in the recent literature is that benchmark proliferation produces fragmentation: too many benchmarks, of inconsistent quality, with no canonical way to compare across them \citep{benchmarking_se2025,qian2026benchmark2}. A practitioner attempting to choose between models faces a discovery problem, a comparability problem, and a trust-calibration problem. The recommended response in much of the literature is consolidation: fewer, better-engineered benchmarks held to high methodological standards.
+
+Our response is that consolidation addresses the wrong problem. The practitioner's underlying need is not for fewer benchmarks; it is for the right benchmark for their specific deployment context. Reducing the size of the long tail does not get them closer to that benchmark---it eliminates many of the candidates. The fragmentation problem is real, but its solution is meta-infrastructure (discovery, documentation, comparison) rather than supply restriction. BenchmarkCards \citep{sokol2024benchmarkcards} is one component of that infrastructure. Standardized benchmark registries with cross-benchmark consistency metrics \citep{benchbench2026} are another. A culture of portfolio-level evaluation in which practitioners select benchmarks tailored to their use case, rather than reading off a single leaderboard, is the third.
+
+\subsection{The Quality-Variance Critique}
+\label{sec:quality}
+
+A related critique is that niche benchmarks vary wildly in methodological quality, with many indie benchmarks lacking inter-annotator agreement statistics, ground-truth validation, or any documentation at all \citep{liu2025survey,linegoesup2025}. A reader cannot, in general, distinguish a high-signal niche benchmark from a low-signal one without spending substantial time investigating it.
+
+We accept the diagnosis and reject the prescription. Quality variance is real and is the appropriate target of better documentation infrastructure (Principle 6 in \Cref{sec:playbook}). It is not the appropriate target of restricting which benchmarks are allowed to exist or be cited. The analogous situation in software engineering---where open-source libraries vary wildly in quality, with most being abandoned and a few being load-bearing infrastructure---is not addressed by restricting who can publish a library. It is addressed by maintainer reputation, package registries with health metadata, and the natural selection of community attention. The same dynamics will, given time and modest meta-infrastructure investment, sort the niche-benchmark ecosystem.
+
+\subsection{The Evaluator Conflict Critique}
+\label{sec:conflict}
+
+When industry-vertical benchmarks (Tier 2) are designed by vendors who also compete in the evaluated category, there is a structural conflict of interest. PIF-Bench is an honest example: R\={o}my designed the benchmark and is one of the four systems evaluated on it \citep{lijo2026pifbench}. The benchmark may be shaped, even unconsciously, by knowledge of the vendor's strengths and competitors' weaknesses. The same critique applies more broadly to industry benchmarks of all kinds.
+
+The mitigations are well understood from analogous fields (financial reporting, clinical trial publication, drug-efficacy studies). They include: explicit conflict disclosure; release of the scoring framework, ground truth, and evaluation procedure in sufficient detail for independent replication; preference for verifiable external ground truth over judgment-based scoring; and ideally, periodic re-evaluation by independent third parties. Where these mitigations are present, vendor-built benchmarks should be read with appropriate caution but not dismissed; they often capture domain knowledge that no academic group is positioned to produce. Where these mitigations are absent, the benchmark should be treated as marketing and weighted accordingly.
+
+\subsection{The Cultural and Linguistic Bias Critique}
+\label{sec:bias}
+
+Most of the niche benchmarks discussed in this paper are English-language, U.S.-centric, and oriented toward the professional concerns of high-income economies. The 2025 benchmark survey \citep{liu2025survey} explicitly identifies cultural and linguistic bias as a persistent gap in the field. The same critique applies to most general benchmarks (MMLU is built on U.S. educational material; HumanEval on English-commented Python), but it bites harder on niche benchmarks because their narrow scope amplifies the cultural assumptions baked into their construction.
+
+This is a genuine limitation, not a gap that the bidirectional argument resolves. The appropriate response is to invest in the long tail of \emph{non-English, non-Western} niche benchmarks with the same energy currently invested in English-language ones, rather than to consolidate around fewer, presumably more universal, general benchmarks. The problem is not too many benchmarks; it is too few benchmarks of the right kind. Initiatives such as ProLLM's multi-language industrial benchmarking \citep{prollm2025} and the League-of-LLMs benchmark-free mutual-evaluation paradigm \citep{llmcrowdsourced2025} represent early steps in expanding the methodological and linguistic surface of niche evaluation.
+
+% ── 8. Discussion ────────────────────────────────────────────────────────────
+\section{Discussion}
+\label{sec:discussion}
+
+The argument of this paper is structural, not technical. We are not claiming that any specific niche benchmark is well-constructed, or that any specific tier of the taxonomy will become dominant. We are claiming that the population-level effect of a healthy long tail of niche benchmarks is a more informative evaluation ecosystem than any single canonical leaderboard can produce, and that the field's current preoccupation with consolidating or quality-controlling that long tail addresses the wrong problem.
+
+\subsection{Implications for Practitioners}
+\label{sec:practimpl}
+
+For organizations deploying LLMs, the operational consequence of the bidirectional argument is straightforward: if a niche benchmark exists for your deployment domain, use it as your primary evaluation instrument and treat general-capability scores as a coarse pre-filter. If no niche benchmark exists and the deployment stakes warrant it, build one. The seven design principles in \Cref{sec:playbook} are the starting point. The cost of a five-prompt, four-system evaluation in the PIF-Bench style is on the order of one human-week and \$50 in API costs (\Cref{sec:cost}); the cost of a wrong model-selection decision in a domain where errors damage downstream relationships is much larger.
+
+A common failure pattern is for organizations to assume that since general benchmarks are unreliable, all benchmarks are unreliable, and to fall back on ad-hoc ``vibe checks'' as their primary evaluation method. This is the wrong inference. The correct inference is that benchmark choice matters more than ever: the right benchmark for the deployment context produces actionable signal, while the wrong benchmark or no benchmark produces noise.
+
+\subsection{Implications for Frontier Laboratories}
+\label{sec:labimpl}
+
+For laboratories building frontier models, the implication is that the long tail of niche benchmarks should be treated as load-bearing capability-tracking infrastructure rather than as PR signal. The case-study failure modes in \Cref{sec:casestudy} are the kind of diagnostic information that internal post-training teams cannot easily produce on their own; the people best positioned to identify them are domain practitioners, who will identify them only if they perceive that labs are listening.
+
+This implies a few concrete operational changes. Labs should formally subscribe to a representative basket of niche benchmarks across the three tiers and report against them in model release notes alongside the canonical leaderboards. Labs should publish their internal taxonomy of failure modes in a form that lets external benchmark builders target them. And labs should engage directly with high-quality Tier 2 and Tier 3 benchmark builders---through grants, partnerships, or formal liaisons---in the way that pharmaceutical companies engage with academic clinical research groups.
+
+\subsection{Implications for the Research Community}
+\label{sec:researchimpl}
+
+For the academic NLP and AI research communities, the implications are methodological. First, position papers and meta-evaluations should engage Tier 2 and Tier 3 benchmarks as legitimate primary sources, not as informal anecdote. SkateBench produces a 20-point spread between two frontier models; that is a real signal, and it warrants real analysis. Second, the venue infrastructure for publishing benchmark work should accommodate the Tier 2 and Tier 3 production styles; a benchmark-card-quality publication with rigorous evaluation but informal exposition should be citable in the same way as a multi-author benchmark paper at NeurIPS. Third, the meta-evaluation literature should focus less on ranking benchmarks against each other and more on developing the discovery, documentation, and aggregation infrastructure that lets a portfolio approach become tractable.
+
+% ── 9. Limitations ───────────────────────────────────────────────────────────
+\section{Limitations and Threats to Validity}
+\label{sec:limitations}
+
+We identify five limitations of the position taken in this paper.
+
+\paragraph{Position paper, not empirical study.} The central claims of this paper are normative (about how the evaluation ecosystem should be structured) and structural (about the relationships between benchmark types). They are not the kind of claims that can be falsified by a single experiment. Where we draw on empirical evidence (PIF-Bench results, MMLU saturation data, SkateBench rankings), it is illustrative rather than load-bearing. A reader who finds the structural argument unconvincing will not find any single empirical demonstration in this paper that resolves the disagreement.
+
+\paragraph{Author-affiliation conflict.} The first author is affiliated with R\={o}my, the developer of one of the four systems evaluated in PIF-Bench, which appears in this paper as one of three benchmark vignettes (\Cref{sec:vignette-pif}). The same conflict-of-interest discussion that applies to PIF-Bench \citep{lijo2026pifbench} applies here. We have attempted to address it by drawing the PIF-Bench-derived points from per-cell evidence (the deceased-prospect failure on ChatGPT, the temporal-displacement failure on Gemini, the geographic recall failure on ChatGPT) rather than from the aggregate ranking, by giving SkateBench and SnitchBench equal narrative weight in the vignette section, and by making the bidirectional argument independent of which specific system happens to win the underlying evaluation.
+
+\paragraph{Tier 3 ecosystem is hard to systematically catalog.} The indie-informal tier is, by construction, distributed across blogs, GitHub repositories, Twitter/X posts, and personal websites; the taxonomy of \Cref{sec:taxonomy} is built from a non-random sample of indie benchmarks that achieved sufficient social-media visibility to be discoverable. The tier is almost certainly larger and more varied than the discoverable subset suggests, and the design patterns visible in the discoverable subset may not generalize.
+
+\paragraph{U.S./English bias.} As discussed in \Cref{sec:bias}, the benchmarks cited in this paper are heavily concentrated in English-language, U.S.-relevant domains. Niche-benchmark ecosystems in other languages and cultural contexts may follow different dynamics, and the argument as stated does not engage them adequately.
+
+\paragraph{Temporal snapshot.} The saturation evidence in \Cref{sec:saturation} reflects the state of the leaderboards as of April 2026. New general benchmarks (HLE, FrontierMath, RE-Bench) may discriminate between frontier systems for some period before they too compress. The structural argument does not depend on any specific saturation date but does depend on the recurring pattern; a reader who believes the next round of general benchmarks will not compress should weight the bidirectional argument less heavily.
+
+% ── 10. Conclusion ───────────────────────────────────────────────────────────
+\section{Conclusion}
+\label{sec:conclusion}
+
+The proliferation of niche benchmarks in LLM evaluation is not a fragmentation problem to be cleaned up. It is the evaluation ecosystem responding correctly to two facts about the deployed reality of these models: that the surface of relevant tasks is much longer-tailed than any general benchmark can cover, and that general-capability leaderboards have entered a regime in which saturation, contamination, and Goodhart pressure jointly destroy their discriminative power.
+
+We have argued that niche benchmarks generate value in two directions at once. For practitioners, they make model selection a tractable decision tied to a specific deployment context, with effect sizes (PIF-Bench's 17.2-point spread, SkateBench's 20-point spread) that are operationally meaningful in a way that the three-point spreads on saturated general benchmarks are not. For frontier laboratories, they provide diagnostic signal precisely where general benchmarks no longer separate models, and they surface failure modes (temporal displacement, edge-case adaptation, geographic recall, sensitive-topic handling) that aggregate metrics obscure.
+
+We have proposed a three-tier taxonomy (academic-formal, industry-vertical, indie-informal) that clarifies how different kinds of niche benchmarks contribute different signals, and we have articulated seven design principles for constructing a high-signal niche benchmark. We have addressed the standard objections to benchmark proliferation---fragmentation, quality variance, evaluator conflict, cultural bias---and argued that the appropriate response is meta-infrastructure investment rather than supply restriction.
+
+The next phase of LLM evaluation will be defined by the field's response to a structural choice that is no longer hypothetical. The choice is whether to treat the long tail of niche benchmarks as a defect to be consolidated, or as the substrate on which a more informative evaluation ecosystem can be built. We have argued for the second. If that argument is correct, the practical agenda is concrete: build benchmark cards, build registries, build cross-benchmark consistency tooling, build the cultural convention that frontier labs attend to the long tail---and, most importantly, build more niche benchmarks across more domains, in more languages, by more practitioners. The proliferation is not the problem. It is the beginning of the answer.
+
+% ── Acknowledgments ──────────────────────────────────────────────────────────
+\section*{Acknowledgments}
+
+The author thanks the practitioners and benchmark builders whose published work and informal commentary made this synthesis possible, and the development officers and prospect researchers whose engagement with PIF-Bench informed the case-study material. Conversations with peers about the 2025 evaluation crisis and the role of indie benchmarks shaped the bidirectional framing.
+
+% ── Disclosure ───────────────────────────────────────────────────────────────
+\section*{Conflict of Interest Disclosure}
+
+The author is affiliated with R\={o}my, the developer of one of the systems evaluated in PIF-Bench, which appears as one of three benchmark vignettes in \Cref{sec:vignette-pif}. The position taken in this paper does not depend on the specific outcome of any PIF-Bench evaluation; the bidirectional value argument, the three-tier taxonomy, and the design playbook are illustrated equally by SkateBench and SnitchBench (neither of which the author is affiliated with) and are independent of which system happens to score highest on any specific niche benchmark. PIF-Bench is open source and available for inspection at \url{https://github.com/getromy-app/pif-bench}. The author has no financial relationship with the producers of any other benchmark cited in this paper.
+
+% ── References ───────────────────────────────────────────────────────────────
+\begin{thebibliography}{40}
+
+\bibitem[Anjum et~al.(2025)]{he2025domainmllm}
+Anjum, K., Arshad, M.~A., Hayawi, K., Polyzos, E., Tariq, A., Serhani, M.~A., Batool, L., Lund, B., Mannuru, N.~R., Bevara, R.~V.~K., Mahbub, T., Akram, M.~Z., and Shahriar, S.
+\newblock Domain specific benchmarks for evaluating multimodal large language models.
+\newblock \emph{arXiv preprint arXiv:2506.12958}, 2025.
+
+\bibitem[Artificial Analysis(2026)]{artificialanalysis2026}
+Artificial Analysis.
+\newblock LLM leaderboard: Comparison of frontier AI models, April 2026.
+\newblock \url{https://artificialanalysis.ai/leaderboards/models}, 2026.
+
+\bibitem[Browne(2025a)]{browne2025skatebench}
+Browne, T.
+\newblock {SkateBench}: Ranking models by skateboarding knowledge.
+\newblock \url{https://skatebench.t3.gg/}, 2025.
+
+\bibitem[Browne(2025b)]{browne2025snitchbench}
+Browne, T.
+\newblock {SnitchBench}: A benchmark of {AI} model whistleblowing behavior.
+\newblock \url{https://snitchbench.t3.gg/}, 2025.
+
+\bibitem[Chen et~al.(2021)]{chen2021evaluating}
+Chen, M., Tworek, J., Jun, H., Yuan, Q., Pinto, H.~P.~d.~O., Kaplan, J., et~al.
+\newblock Evaluating large language models trained on code.
+\newblock \emph{arXiv preprint arXiv:2107.03374}, 2021.
+
+\bibitem[Chen et~al.(2025)]{stockbench2025}
+Chen, Y., Yao, Z., Liu, Y., Ye, J., Yu, J., Hou, L., and Li, J.
+\newblock {STOCKBENCH}: Evaluating {LLMs} in realistic stock trading scenarios.
+\newblock \emph{arXiv preprint arXiv:2510.02209}, 2025.
+
+\bibitem[Cobbe et~al.(2021)]{cobbe2021gsm8k}
+Cobbe, K., Kosaraju, V., Bavarian, M., Chen, M., Jun, H., Kaiser, L., Plappert, M., Tworek, J., Hilton, J., Nakano, R., Hesse, C., and Schulman, J.
+\newblock Training verifiers to solve math word problems.
+\newblock \emph{arXiv preprint arXiv:2110.14168}, 2021.
+
+\bibitem[Fei et~al.(2023)]{fei2023lawbench}
+Fei, Z., Shen, X., Zhu, D., Zhou, F., Han, Z., Zhang, S., Chen, K., Shen, Z., and Ge, J.
+\newblock {LawBench}: Benchmarking legal knowledge of large language models.
+\newblock \emph{arXiv preprint arXiv:2309.16289}, 2023.
+
+\bibitem[Fodor(2025)]{linegoesup2025}
+Fodor, J.
+\newblock Line goes up? {I}nherent limitations of benchmarks for evaluating large language models.
+\newblock \emph{arXiv preprint arXiv:2502.14318}, 2025.
+
+\bibitem[Golchin and Surdeanu(2024)]{golchin2024timetravel}
+Golchin, S. and Surdeanu, M.
+\newblock Time travel in {LLMs}: Tracing data contamination in large language models.
+\newblock In \emph{Proceedings of the International Conference on Learning Representations}, 2024.
+
+\bibitem[Goodhart(1975)]{goodhart1975}
+Goodhart, C.~A.~E.
+\newblock Problems of monetary management: The {U.K.} experience.
+\newblock \emph{Papers in Monetary Economics, Reserve Bank of Australia}, 1, 1975.
+
+\bibitem[Guha et~al.(2024)]{guha2024legalbench}
+Guha, N., Nyarko, J., Ho, D.~E., R\'{e}, C., Chilton, A., Narasimhan, A., Chhatwal, A., Becker, B., Askew, B., Dressel, B., et~al.
+\newblock {LegalBench}: A collaboratively built benchmark for measuring legal reasoning in large language models.
+\newblock In \emph{Advances in Neural Information Processing Systems}, volume~36, 2024.
+
+\bibitem[Guo et~al.(2025a)]{llmcrowdsourced2025}
+Guo, Q., Xie, W., Cai, X., Wang, E., Ma, S., Sun, X., Xia, T., Chen, K., Wang, X., and Wang, B.
+\newblock League of {LLMs}: A benchmark-free paradigm for mutual evaluation of large language models.
+\newblock \emph{arXiv preprint arXiv:2507.22359}, 2025.
+
+\bibitem[Guo et~al.(2025b)]{sdbench2025}
+Guo, C., Kai, H., Liang, S., Jiang, Y., Gao, Y., Hua, X.-S., and Dong, W.
+\newblock {SDBench}: A survey-based domain-specific {LLM} benchmarking and optimization framework.
+\newblock In \emph{Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics}, 2025.
+
+\bibitem[Hendrycks et~al.(2021)]{hendrycks2021measuring}
+Hendrycks, D., Burns, C., Basart, S., Zou, A., Mazeika, M., Song, D., and Steinhardt, J.
+\newblock Measuring massive multitask language understanding.
+\newblock In \emph{International Conference on Learning Representations}, 2021.
+
+\bibitem[Huang et~al.(2025)]{dmind2025}
+Huang, E., Sun, P., Lin, Z., Chen, A., Ouyang, J., Wang, H., Hu, K., Yi, J., Li, F., Zhang, Z., Xu, T., Zhao, G., Ling, Z., and Yang, L.
+\newblock {DMind} benchmark: The first comprehensive benchmark for {LLM} evaluation in the {Web3} domain.
+\newblock \emph{arXiv preprint arXiv:2504.16116}, 2025.
+
+\bibitem[Jacovi et~al.(2023)]{jacovi2023stop}
+Jacovi, A., Caciularu, A., Goldman, O., and Goldberg, Y.
+\newblock Stop uploading test data in plain text: Practical strategies for mitigating data contamination by evaluation benchmarks.
+\newblock In \emph{Proceedings of EMNLP}, 2023.
+
+\bibitem[Jain et~al.(2024)]{jain2024livecodebench}
+Jain, N., Han, K., Gu, A., Li, W.-D., Yan, F., Zhang, T., Wang, S., Solar-Lezama, A., Sen, K., and Stoica, I.
+\newblock {LiveCodeBench}: Holistic and contamination-free evaluation of large language models for code.
+\newblock \emph{arXiv preprint arXiv:2403.07974}, 2024.
+
+\bibitem[Jin et~al.(2021)]{jin2021disease}
+Jin, D., Pan, E., Oufattole, N., Weng, W.-H., Fang, H., and Szolovits, P.
+\newblock What disease does this patient have? {A} large-scale open domain question answering dataset from medical exams.
+\newblock \emph{Applied Sciences}, 11(14):6421, 2021.
+
+\bibitem[Joshi et~al.(2017)]{joshi2017triviaqa}
+Joshi, M., Choi, E., Weld, D.~S., and Zettlemoyer, L.
+\newblock {TriviaQA}: A large scale distantly supervised challenge dataset for reading comprehension.
+\newblock In \emph{Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics}, pages 1601--1611, 2017.
+
+\bibitem[Karpathy(2025)]{karpathy2025year}
+Karpathy, A.
+\newblock 2025 {LLM} year in review.
+\newblock \url{https://karpathy.bearblog.dev/year-in-review-2025/}, 2025.
+
+\bibitem[Koohestani et~al.(2025)]{benchmarking_se2025}
+Koohestani, R., de~Bekker, P., Ko\c{c}, B., and Izadi, M.
+\newblock Benchmarking {AI} models in software engineering: A review, search tool, and unified approach for elevating benchmark quality.
+\newblock \emph{arXiv preprint arXiv:2503.05860}, 2025.
+
+\bibitem[Kwiatkowski et~al.(2019)]{kwiatkowski2019natural}
+Kwiatkowski, T., Palomaki, J., Redfield, O., Collins, M., Parikh, A., Alberti, C., Epstein, D., Polosukhin, I., Devlin, J., Lee, K., Toutanova, K., Jones, L., Kelcey, M., Chang, M.-W., Dai, A.~M., Uszkoreit, J., Le, Q., and Petrov, S.
+\newblock Natural questions: A benchmark for question answering research.
+\newblock \emph{Transactions of the Association for Computational Linguistics}, 7:453--466, 2019.
+
+\bibitem[Liang et~al.(2023)]{liang2023holistic}
+Liang, P., Bommasani, R., Lee, T., Tsipras, D., Soylu, D., Yasunaga, M., Zhang, Y., Narayanan, D., Wu, Y., Kumar, A., et~al.
+\newblock Holistic evaluation of language models.
+\newblock \emph{Transactions on Machine Learning Research}, 2023.
+
+\bibitem[Ling et~al.(2024)]{ling2024domain}
+Ling, C., Zhao, X., Lu, J., Deng, C., Zheng, C., Wang, J., et~al.
+\newblock Domain specialization as the key to make large language models disruptive: A comprehensive survey.
+\newblock \emph{arXiv preprint arXiv:2305.18703}, 2024.
+
+\bibitem[Ni et~al.(2025)]{liu2025survey}
+Ni, S., Chen, G., Li, S., Chen, X., Li, S., Wang, B., Wang, Q., Wang, X., Zhang, Y., Fan, L., Li, C., Xu, R., Sun, L., and Yang, M.
+\newblock A survey on large language model benchmarks.
+\newblock \emph{arXiv preprint arXiv:2508.15361}, 2025.
+
+\bibitem[OpenAI(2022)]{openai2022goodhart}
+OpenAI.
+\newblock Measuring {Goodhart's} law.
+\newblock \url{https://openai.com/index/measuring-goodharts-law/}, 2022.
+
+\bibitem[Parrish et~al.(2022)]{parrish2022bbq}
+Parrish, A., Chen, A., Nangia, N., Padmakumar, V., Phang, J., Thompson, J., Htut, P.~M., and Bowman, S.~R.
+\newblock {BBQ}: A hand-built bias benchmark for question answering.
+\newblock In \emph{Findings of ACL 2022}, pages 2086--2105, 2022.
+
+\bibitem[Phan et~al.(2025)]{phan2025hle}
+Phan, L., Gatti, A., Han, Z., Li, N., Yue, S., Wang, A., Hendrycks, D., et~al.
+\newblock {Humanity's Last Exam}.
+\newblock \emph{arXiv preprint arXiv:2501.14249}, 2025.
+
+\bibitem[ProLLM(2025)]{prollm2025}
+ProLLM.
+\newblock Pro{LLM} benchmarks: Real-world business use cases across industries and languages.
+\newblock \url{https://www.prollm.ai/}, 2025.
+
+\bibitem[Qian and Huang(2026)]{qian2026benchmark2}
+Qian, Q. and Huang, C.
+\newblock Benchmark$^{2}$: Systematic evaluation of {LLM} benchmarks.
+\newblock \emph{arXiv preprint arXiv:2601.03986}, 2026.
+
+\bibitem[Rein et~al.(2023)]{rein2023gpqa}
+Rein, D., Hou, B.~L., Stickland, A.~C., Petty, J., Pang, R.~Y., Dirani, J., Michael, J., and Bowman, S.~R.
+\newblock {GPQA}: A graduate-level {Google}-proof {Q\&A} benchmark.
+\newblock \emph{arXiv preprint arXiv:2311.12022}, 2023.
+
+\bibitem[Sainz et~al.(2023)]{sainz2023nlp}
+Sainz, O., Campos, J.~A., Garc\'{i}a-Ferrero, I., Etxaniz, J., de~Lacalle, O.~L., and Agirre, E.
+\newblock {NLP} evaluation in trouble: On the need to measure {LLM} data contamination for each benchmark.
+\newblock In \emph{Findings of EMNLP 2023}, 2023.
+
+\bibitem[Shalom Lijo(2026)]{lijo2026pifbench}
+Shalom Lijo, S.
+\newblock {PIF-Bench}: Evaluating prospect intelligence fidelity in {AI}-assisted donor research.
+\newblock R\={o}my, 2026. Forthcoming.
+\newblock Open-source benchmark, scoring framework, and accompanying paper available at \url{https://github.com/getromy-app/pif-bench}.
+
+\bibitem[SimpleBench(2024)]{simplebench2024}
+SimpleBench.
+\newblock {SimpleBench}: Common-sense reasoning probes for large language models.
+\newblock \url{https://simple-bench.com/}, 2024.
+
+\bibitem[Singhal et~al.(2023)]{singhal2023large}
+Singhal, K., Azizi, S., Tu, T., Mahdavi, S.~S., Wei, J., Chung, H.~W., Scales, N., Tanwani, A., Cole-Lewis, H., Pfohl, S., et~al.
+\newblock Large language models encode clinical knowledge.
+\newblock \emph{Nature}, 620(7972):172--180, 2023.
+
+\bibitem[Sokol et~al.(2024)]{sokol2024benchmarkcards}
+Sokol, A., Daly, E., Hind, M., Piorkowski, D., Zhang, X., Moniz, N., and Chawla, N.
+\newblock {BenchmarkCards}: Standardized documentation for large language model benchmarks.
+\newblock \emph{arXiv preprint arXiv:2410.12974}, 2024.
+
+\bibitem[Srivastava et~al.(2023)]{srivastava2023bigbench}
+Srivastava, A., Rastogi, A., Rao, A., Shoeb, A.~A.~M., Abid, A., Fisch, A., et~al.
+\newblock Beyond the imitation game: Quantifying and extrapolating the capabilities of language models.
+\newblock \emph{Transactions on Machine Learning Research}, 2023.
+
+\bibitem[Strathern(1997)]{strathern1997}
+Strathern, M.
+\newblock `{I}mproving ratings': audit in the {B}ritish university system.
+\newblock \emph{European Review}, 5(3):305--321, 1997.
+
+\bibitem[Wang et~al.(2024)]{wang2024mmlupro}
+Wang, Y., Ma, X., Zhang, G., Ni, Y., Chandra, A., Guo, S., et~al.
+\newblock {MMLU-Pro}: A more robust and challenging multi-task language understanding benchmark.
+\newblock \emph{arXiv preprint arXiv:2406.01574}, 2024.
+
+\bibitem[White et~al.(2024)]{white2024livebench}
+White, C., Dooley, S., Roberts, M., Pal, A., Feuer, B., Jain, S., Shwartz-Ziv, R., Jain, N., Saifullah, K., Naidu, S., Hegde, C., LeCun, Y., Goldstein, T., Neiswanger, W., and Goldblum, M.
+\newblock {LiveBench}: A challenging, contamination-free {LLM} benchmark.
+\newblock \emph{arXiv preprint arXiv:2406.19314}, 2024.
+
+\bibitem[Wu et~al.(2023)]{wu2023bloomberggpt}
+Wu, S., Irsoy, O., Lu, S., Dabravolski, V., Dredze, M., Gehrmann, S., Kambadur, P., Rosenberg, D., and Mann, G.
+\newblock {BloombergGPT}: A large language model for finance.
+\newblock \emph{arXiv preprint arXiv:2303.17564}, 2023.
+
+\bibitem[Xie et~al.(2024)]{xie2024finben}
+Xie, Q., Han, W., Zhang, X., Lai, Y., Peng, M., Lopez-Lira, A., and Huang, J.
+\newblock {FinBen}: A holistic financial benchmark for large language models.
+\newblock In \emph{Advances in Neural Information Processing Systems}, volume~37, 2024.
+
+\bibitem[Xu et~al.(2024)]{xu2024benchmark}
+Xu, R., Wang, Z., Fan, R.-Z., and Liu, P.
+\newblock Benchmark data contamination of large language models: A survey.
+\newblock \emph{arXiv preprint arXiv:2406.04244}, 2024.
+
+\bibitem[Zheng et~al.(2026)]{benchbench2026}
+Zheng, Y., Luo, H., Lin, Z., Liu, W., and Tuan, L.~A.
+\newblock {BenchBench}: Benchmarking automated benchmark generation.
+\newblock \emph{arXiv preprint arXiv:2603.20807}, 2026.
+
+\bibitem[Zhu et~al.(2024)]{sun2024contamination}
+Zhu, Q., Cheng, Q., Peng, R., Li, X., Peng, R., Liu, T., Qiu, X., and Huang, X.
+\newblock Inference-time decontamination: Reusing leaked benchmarks for large language model evaluation.
+\newblock In \emph{Findings of the Association for Computational Linguistics: EMNLP 2024}, pages 9113--9129, 2024.
+\newblock \emph{arXiv preprint arXiv:2406.13990}.
+
+\end{thebibliography}
+
+\end{document}
