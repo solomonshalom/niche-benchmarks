@@ -53,7 +53,7 @@ General-purpose large language model (LLM) benchmarks such as MMLU, HumanEval, a
 \end{abstract}
 
 \medskip
-\noindent\textbf{Keywords:} large language models, benchmarks, evaluation, domain specialization, model selection, Goodhart's law, hallucination, position paper
+\noindent\textbf{Keywords:} large language models, benchmarks, evaluation, domain specialization, model selection, Goodhart's law, hallucination, empirical case studies
 
 % ── 1. Introduction ──────────────────────────────────────────────────────────
 \section{Introduction}
@@ -78,7 +78,7 @@ This paper argues that niche benchmarks deserve to be treated as first-class eva
   \item We provide a \textbf{design playbook} of seven principles for constructing a niche benchmark, illustrated with three short vignettes spanning the taxonomy---SkateBench (Tier 3), SnitchBench (Tier 3), and PIF-Bench (Tier 2)---and address the standard counterarguments around fragmentation, quality variance, and evaluator conflict (\Cref{sec:playbook,sec:counterarguments}).
 \end{enumerate}
 
-This is a position paper. Where we present empirical claims (saturation gaps, contamination evidence, PIF-Bench failure-mode counts), we cite primary sources. Where we make normative claims (about how the evaluation ecosystem should be structured), we mark them as such and engage the strongest opposing views we have found in the literature. The first author is affiliated with R\={o}my, the developer of one of the systems evaluated in PIF-Bench; this conflict is discussed in \Cref{sec:limitations}.
+This paper combines a structural argument with three empirical case studies. The structural claims (about the relationships between benchmark types and the failure modes general benchmarks miss) are illustrated by reproducible per-system data drawn from SkateBench, SnitchBench, and PIF-Bench, and the saturation and contamination claims are supported by primary sources cited throughout. Where we make explicitly normative claims (about how the evaluation ecosystem should be structured), we mark them as such and engage the strongest opposing views we have found in the literature. The first author is affiliated with R\={o}my, the developer of one of the systems evaluated in PIF-Bench; this conflict is discussed in \Cref{sec:limitations}.
 
 % ── 2. The Saturation Crisis ─────────────────────────────────────────────────
 \section{The Saturation Crisis on General Benchmarks}
@@ -361,15 +361,15 @@ This implies a few concrete operational changes. Labs should formally subscribe 
 \subsection{Implications for the Research Community}
 \label{sec:researchimpl}
 
-For the academic NLP and AI research communities, the implications are methodological. First, position papers and meta-evaluations should engage Tier 2 and Tier 3 benchmarks as legitimate primary sources, not as informal anecdote. SkateBench produces a 20-point spread between two frontier models; that is a real signal, and it warrants real analysis. Second, the venue infrastructure for publishing benchmark work should accommodate the Tier 2 and Tier 3 production styles; a benchmark-card-quality publication with rigorous evaluation but informal exposition should be citable in the same way as a multi-author benchmark paper at NeurIPS. Third, the meta-evaluation literature should focus less on ranking benchmarks against each other and more on developing the discovery, documentation, and aggregation infrastructure that lets a portfolio approach become tractable.
+For the academic NLP and AI research communities, the implications are methodological. First, structural and meta-evaluation work should engage Tier 2 and Tier 3 benchmarks as legitimate primary sources, not as informal anecdote. SkateBench produces a 20-point spread between two frontier models; that is a real signal, and it warrants real analysis. Second, the venue infrastructure for publishing benchmark work should accommodate the Tier 2 and Tier 3 production styles; a benchmark-card-quality publication with rigorous evaluation but informal exposition should be citable in the same way as a multi-author benchmark paper at NeurIPS. Third, the meta-evaluation literature should focus less on ranking benchmarks against each other and more on developing the discovery, documentation, and aggregation infrastructure that lets a portfolio approach become tractable.
 
 % ── 9. Limitations ───────────────────────────────────────────────────────────
 \section{Limitations and Threats to Validity}
 \label{sec:limitations}
 
-We identify five limitations of the position taken in this paper.
+We identify five limitations of the argument as presented.
 
-\paragraph{Position paper, not empirical study.} The central claims of this paper are normative (about how the evaluation ecosystem should be structured) and structural (about the relationships between benchmark types). They are not the kind of claims that can be falsified by a single experiment. Where we draw on empirical evidence (PIF-Bench results, MMLU saturation data, SkateBench rankings), it is illustrative rather than load-bearing. A reader who finds the structural argument unconvincing will not find any single empirical demonstration in this paper that resolves the disagreement.
+\paragraph{Structural argument, illustrated with empirical case studies.} The central claims combine structural propositions (about the relationships between benchmark types) with three empirical case studies (SkateBench, SnitchBench, PIF-Bench). The structural propositions are supported by, but extend beyond, what any single experiment can confirm. The case-study evidence is reproducible against published per-system numbers, but each case study is itself bounded in scope, and a reader who disagrees with the structural framing will not find any single empirical demonstration in this paper that resolves the disagreement on its own.
 
 \paragraph{Author-affiliation conflict.} The first author is affiliated with R\={o}my, the developer of one of the four systems evaluated in PIF-Bench, which appears in this paper as one of three benchmark vignettes (\Cref{sec:vignette-pif}). The same conflict-of-interest discussion that applies to PIF-Bench \citep{lijo2026pifbench} applies here. We have attempted to address it by drawing the PIF-Bench-derived points from per-cell evidence (the deceased-prospect failure on ChatGPT, the temporal-displacement failure on Gemini, the geographic recall failure on ChatGPT) rather than from the aggregate ranking, by giving SkateBench and SnitchBench equal narrative weight in the vignette section, and by making the bidirectional argument independent of which specific system happens to win the underlying evaluation.
 
